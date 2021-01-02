@@ -18,20 +18,40 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-import wandb
 
-from mnistmodel import DeepMNIST
+from mnistmodel import DeepMNIST # for rotation equivariant CNN
+from mnistmodel import RegularCNN # for regular CNN
 
 class RotMNISTDataset(Dataset):
+   '''Rot-MNIST Dataset'''
 
    def __init__(self, image_set, label_set):
+      '''
+      Args:
+         image_set (numpy int): matrix containing images of 
+         rot-MIST digits
+         label_set (numpy int): matrix containing labels for
+         the digits
+      '''
       self.image_set = image_set
       self.label_set = label_set
 
    def __len__(self):
+      '''
+      Returns length of image_set
+      '''
       return len(self.image_set)
 
    def __getitem__(self, idx):
+      '''
+      Behavior: Takes a random index from the instance of Dataloader and returns
+      the respective sample from the data
+      Args:
+         idx (int): denotes index of sample to be returned
+      Returns:
+         image_sample (torch tensor): 1D matrix containing the image sample
+         label_sample (torch tensor): label of the respective sample
+      '''
 
       image_sample = torch.from_numpy(self.image_set[idx])
       label_sample = torch.from_numpy(np.asarray(self.label_set[idx]))
@@ -41,6 +61,17 @@ class RotMNISTDataset(Dataset):
 
 
 def download2FileAndExtract(url, folder, fileName):
+   '''
+   Downloads and extracts the files and folders from the 
+   provided url.
+
+   Args:
+      url (str): web link of the dataset
+      folder (str): path of current folder where the zip
+      will be downloaded
+      filename (str): name of the zip file to be extracted
+   '''
+
    print('Downloading rotated MNIST...')
    add_folder(folder)
    zipFileName = folder + fileName
@@ -62,6 +93,18 @@ def download2FileAndExtract(url, folder, fileName):
    print('Successfully retrieved rotated MNIST dataset.')
 
 def settings(args):
+   '''
+   Contains script related to data check and initialization
+   of various hyperparameters related to model training and testing
+
+   Args:
+      args: argument variable partially inialized while invoking
+
+   Returns: 
+      args: argument with various hyperparameters initialized. All hyperparameters
+      can be manually modified here.
+      data: Rot-MNIST dataset organized into train, validation and test sets. 
+   '''
    #print('Running settings fn')
    # Download MNIST if it doesn't exist
    args.dataset = 'rotated_mnist'
@@ -106,48 +149,36 @@ def settings(args):
       args.n_classes = 10
       args.lr_div = 10.
       args.model_path = './models/'
-      args.train_mode = True
-      args.load_pretrained = False
-      args.pretrained_model = './models/model_3235.pth'
+      args.train_mode = False
+      args.load_pretrained = True
+      args.pretrained_model = './models/regularcnn_model.pth'
 
    args.log_path = add_folder('./logs')
    args.checkpoint_path = add_folder('./checkpoints') + '/model.ckpt'
    return args, data
 
 def add_folder(folder_name):
+   '''
+   Creates the folder specified by folder_name if it does not
+   exist.
+
+   Args: 
+      folder_name (str): path of a folder
+   '''
+
    if not os.path.exists(folder_name):
       os.mkdir(folder_name)
       print('Created {:s}'.format(folder_name))
    return folder_name
 
-
-def minibatcher(inputs, targets, batchsize, shuffle=False):
-   assert len(inputs) == len(targets)
-   if shuffle:
-      indices = np.arange(len(inputs))
-      np.random.shuffle(indices)
-   for start_idx in range(0, len(inputs) - batchsize + 1, batchsize):
-      if shuffle:
-         excerpt = indices[start_idx:start_idx + batchsize]
-      else:
-         excerpt = slice(start_idx, start_idx + batchsize)
-      yield inputs[excerpt], targets[excerpt]
-
-def get_learning_rate(args, current, best, counter, learning_rate):
-   """If have not seen accuracy improvement in delay epochs, then divide 
-   learning rate by 10
-   """
-   if current > best:
-      best = current
-      counter = 0
-   elif counter > args.delay:
-      learning_rate = learning_rate / args.lr_div
-      counter = 0
-   else:
-      counter += 1
-   return (best, counter, learning_rate)
-
 def main(args):
+   '''
+   Performs all steps from data loading, model initialization to 
+   training and validation of the model.
+
+   Args:
+      args: argument variable contaning values for all the hyperparameters
+   '''
 
    ##### SETUP AND LOAD DATA #####
    args, data = settings(args)
@@ -167,7 +198,8 @@ def main(args):
    # gathering parameters for training
    lr = args.learning_rate
 
-   model = DeepMNIST(args).to(device)
+   #model = DeepMNIST(args).to(device)
+   model = RegularCNN(args).to(device)
 
    if args.load_pretrained:
       model.load_state_dict(torch.load(args.pretrained_model))

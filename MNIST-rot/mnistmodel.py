@@ -13,11 +13,14 @@ from hnet_lite import Conv2d, HNonlin, BatchNorm
 import hnet_lite as hn_lite
 
 class DeepMNIST(nn.Module):
-    """
+    ''' Pytorch model class for Rot-Equivariant CNN'''
 
-    """
     def __init__(self, args):
         super().__init__()
+        '''
+        Args:
+        args: argument variable to be used to initialize values for all the hyperparameters
+        '''
         self.args = args
         self.order = 1
         # NUmber of filters
@@ -55,6 +58,13 @@ class DeepMNIST(nn.Module):
 
 
     def forward(self, x: torch.FloatTensor):
+        '''
+        Defines the forward propagation for the model
+
+        Args:
+            x (torch FloatTensor): contains of images for the current
+            training step.
+        '''
 
         x = x.view(self.bs, self.args.dim, self.args.dim, 1, 1, 1)
         # defining block 1
@@ -89,3 +99,73 @@ class DeepMNIST(nn.Module):
         real = hn_lite.sum_magnitudes(cv7)
         cv7 = torch.mean(real, dim=(1,2,3,4))  
         return (cv7 + self.bias.view(1, -1))
+
+class RegularCNN(nn.Module):
+
+    """
+        Regular/Standard CNN model
+    """
+    def __init__(self, args):
+        super().__init__()
+        '''
+        Args:
+        args: argument variable to be used to initialize values for all the hyperparameters
+        '''
+
+        self.args = args
+
+        self.feats = nn.Sequential(
+            nn.Conv2d(1, 16, 3, 1, 1),
+            nn.BatchNorm2d(16),
+            nn.ReLU(True),
+
+            nn.Conv2d(16, 16, 3,  1, 1),
+            nn.MaxPool2d(2, 2),
+            nn.BatchNorm2d(16),
+            nn.ReLU(True),
+
+            nn.Conv2d(16, 24, 3, 1, 1),
+            nn.BatchNorm2d(24),
+            nn.ReLU(True),
+
+            nn.Conv2d(24, 24, 3, 1, 1),
+            nn.BatchNorm2d(24),
+            nn.ReLU(True),
+
+            nn.Conv2d(24, 32, 3, 1, 0),
+            nn.BatchNorm2d(32),
+            nn.ReLU(True),
+
+            nn.Conv2d(32, 24, 3, 1, 0),
+            nn.BatchNorm2d(24),
+            nn.ReLU(True),
+
+            nn.Conv2d(24, 24, 4, 1, 0),
+            nn.BatchNorm2d(24),
+            nn.ReLU(True)
+        )
+        self.classifier = nn.Conv2d(24, 10, 1)
+        self.avgpool = nn.AvgPool2d(7, 7)
+
+
+
+
+    def forward(self, x: torch.FloatTensor):
+
+        '''
+        Defines the forward propagation for the model
+
+        Args:
+            x (torch FloatTensor): contains of images for the current
+            training step.
+        '''
+
+        x = x.view(self.args.batch_size, 1, self.args.dim, self.args.dim)
+        out = self.feats(x)
+        out = self.classifier(out)
+        out = self.avgpool(out)
+        out = out.squeeze(-1).squeeze(-1)
+        #print(out.shape)
+
+        return out
+

@@ -13,16 +13,22 @@ from hnet_ops import *
 from hnet_ops import h_conv
 
 class Conv2d(nn.Module):
+    '''Defining custom convolutional layer'''
 
     @staticmethod
     def get_weights(filter_shape, W_init=None, std_mult=0.4):
-        """Initialize weights variable with He method
+        """
+        Initializes weights variable with He method
 
-        filter_shape: list of filter dimensions
-        W_init: numpy initial values (default None)
-        std_mult: multiplier for weight standard deviation (default 0.4)
-        name: (default W)
-        device: (default /cpu:0)
+        Args:
+            filter_shape: list of filter dimensions
+            W_init: numpy initial values (default None)
+            std_mult: multiplier for weight standard deviation (default 0.4)
+            name: (default W)
+            device: (default /cpu:0)
+
+        Returns: 
+            W_init: converted to nn Parameter and the weights are initialized
         """
 
         if W_init == None:
@@ -36,7 +42,15 @@ class Conv2d(nn.Module):
         """
         Initializes the dict of weights
 
+        Args: 
+            shape: spatial dimensions of the layer
+            max_order: maximum rotation order e.g. max_order=2 uses 0,1,2 (default 1)
+            std_mult: multiplier for weight standard deviation (default 0.4)
+
+        Returns:
+            initialized dict of weights
         """
+
         if isinstance(max_order, int):
             orders = range(-max_order, max_order+1)
         else:
@@ -52,7 +66,16 @@ class Conv2d(nn.Module):
 
     @staticmethod
     def init_phase_dict(n_in, n_out, max_order):
-        """Return a dict of phase offsets"""
+        """
+        Initializes phase dict with phase offsets
+
+        Args:
+            n_in: number of input channels
+            n_out; number of output channels
+            max_order: maximum rotation order e.g. max_order=2 uses 0,1,2 (default 1)
+
+        Returns:
+            phase_dict: initialized dict of phase offsets"""
         if isinstance(max_order, int):
             orders = range(-max_order, max_order+1)
         else:
@@ -107,6 +130,15 @@ class Conv2d(nn.Module):
             self.P = None
 
     def forward(self, x):
+        '''
+        Args:
+        x: input pytorch tensor, shape [batchsize,height,width,order,complex,channels],
+        e.g. a real input tensor of rotation order 0 could have shape
+        [16,32,32,3,1,9], or a complex input tensor of rotation orders 0,1,2, could
+        have shape [32,121,121,3,2,10]
+
+        R: 
+        '''
         W = get_filters(self.Q, filter_size=self.kernel_size, P=self.P, n_rings=self.n_rings)
         R = h_conv(x, W, strides=self.stride, padding=self.padding, max_order=self.max_order)
         return R
