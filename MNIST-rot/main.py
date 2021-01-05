@@ -2,6 +2,11 @@
 This is the main script for training the model deep H-net model 
 and evaluating its performance.
 
+Note that choice of hyperparameters for training the model is chosen
+mostly similar to the official tensorflow code of Harmonnic networks
+by Worral et al, CVPR 2017, available at
+https://github.com/danielewworrall/harmonicConvolutions
+
 Author: Debjani Bhowmick, 2020.
 '''
 
@@ -46,8 +51,10 @@ class RotMNISTDataset(Dataset):
       '''
       Behavior: Takes a random index from the instance of Dataloader and returns
       the respective sample from the data
+
       Args:
          idx (int): denotes index of sample to be returned
+
       Returns:
          image_sample (torch tensor): 1D matrix containing the image sample
          label_sample (torch tensor): label of the respective sample
@@ -63,7 +70,8 @@ class RotMNISTDataset(Dataset):
 def download2FileAndExtract(url, folder, fileName):
    '''
    Downloads and extracts the files and folders from the 
-   provided url.
+   provided url. Note that this code has directly been taken from
+   the official code of Worral et al, CVPR, 2017.
 
    Args:
       url (str): web link of the dataset
@@ -73,9 +81,8 @@ def download2FileAndExtract(url, folder, fileName):
    '''
 
    print('Downloading rotated MNIST...')
-   add_folder(folder)
+   create_dir(folder)
    zipFileName = folder + fileName
-   #request = urllib2.urlopen(url)
    request = urlopen(url)
    with open(zipFileName, "wb") as f :
       f.write(request.read())
@@ -95,19 +102,18 @@ def download2FileAndExtract(url, folder, fileName):
 def settings(args):
    '''
    Contains script related to data check and initialization
-   of various hyperparameters related to model training and testing
-
-   Args:
-      args: argument variable partially inialized while invoking
+   of various hyperparameters related to model training and testing. 
+   Note that most parts of this function have directly been taken from
+   the official code of Worral et al, CVPR, 2017.
 
    Returns: 
       args: argument with various hyperparameters initialized. All hyperparameters
       can be manually modified here.
       data: Rot-MNIST dataset organized into train, validation and test sets. 
    '''
-   #print('Running settings fn')
    # Download MNIST if it doesn't exist
    args.dataset = 'rotated_mnist'
+
    if not os.path.exists(args.data_dir + '/mnist_rotation_new.zip'):
       download2FileAndExtract("https://www.dropbox.com/s/0fxwai3h84dczh0/mnist_rotation_new.zip?dl=1",
          args.data_dir, "/mnist_rotation_new.zip")
@@ -117,59 +123,52 @@ def settings(args):
    valid = np.load(mnist_dir + '/rotated_valid.npz')
    test = np.load(mnist_dir + '/rotated_test.npz')
    data = {}
-   if args.combine_train_val:
-      data['train_x'] = np.vstack((train['x'], valid['x']))
-      data['train_y'] = np.hstack((train['y'], valid['y']))
-   else:
-      data['train_x'] = train['x']
-      data['train_y'] = train['y']
-      data['valid_x'] = valid['x']
-      data['valid_y'] = valid['y']
+   data['train_x'] = train['x']
+   data['train_y'] = train['y']
+   data['valid_x'] = valid['x']
+   data['valid_y'] = valid['y']
    data['test_x'] = test['x']
    data['test_y'] = test['y']
 
    
    # Other options
-   if args.default_settings:
-      args.n_epochs = 2000
-      args.batch_size = 46
-      args.learning_rate = 0.076
-      args.std_mult = 0.7
-      args.delay = 12
-      args.phase_preconditioner = 7.8
-      args.filter_gain = 2
-      args.filter_size = 5
-      args.n_rings = 4
-      args.n_filters = 8
-      args.display_step = len(data['train_x'])/64
-      args.is_classification = True
-      args.dim = 28
-      args.crop_shape = 0
-      args.n_channels = 1
-      args.n_classes = 10
-      args.lr_div = 10.
-      args.model_path = './models/'
-      args.train_mode = False
-      args.load_pretrained = True
-      args.pretrained_model = './models/regularcnn_model.pth'
-
-   args.log_path = add_folder('./logs')
-   args.checkpoint_path = add_folder('./checkpoints') + '/model.ckpt'
+   args.n_epochs = 2000
+   args.batch_size = 46
+   args.learning_rate = 0.076
+   args.std_mult = 0.7
+   args.delay = 12
+   args.phase_preconditioner = 7.8
+   args.filter_gain = 2
+   args.filter_size = 5
+   args.n_rings = 4
+   args.n_filters = 8
+   args.display_step = len(data['train_x'])/64
+   args.is_classification = True
+   args.dim = 28
+   args.crop_shape = 0
+   args.n_channels = 1
+   args.n_classes = 10
+   args.lr_div = 10.
+   args.model_path = './models/'
+   args.train_mode = False
+   args.load_pretrained = True
+   args.pretrained_model = './models/rotmnist_model.pth'
+   args.log_path = create_dir('./logs')
+   args.checkpoint_path = create_dir('./checkpoints') + '/model.ckpt'
    return args, data
 
-def add_folder(folder_name):
+def create_dir(dir_name):
    '''
-   Creates the folder specified by folder_name if it does not
-   exist.
+   Creates the specified directory if it does not exist
 
    Args: 
-      folder_name (str): path of a folder
+      dir_name (str): path to the specified  directory
    '''
 
-   if not os.path.exists(folder_name):
-      os.mkdir(folder_name)
-      print('Created {:s}'.format(folder_name))
-   return folder_name
+   if not os.path.exists(dir_name):
+      os.mkdir(dir_name)
+      print('Created {:s}'.format(dir_name))
+   return dir_name
 
 def main(args):
    '''
@@ -179,7 +178,6 @@ def main(args):
    Args:
       args: argument variable contaning values for all the hyperparameters
    '''
-
    ##### SETUP AND LOAD DATA #####
    args, data = settings(args)
 
@@ -198,8 +196,8 @@ def main(args):
    # gathering parameters for training
    lr = args.learning_rate
 
-   #model = DeepMNIST(args).to(device)
-   model = RegularCNN(args).to(device)
+   model = DeepMNIST(args).to(device)
+   #model = RegularCNN(args).to(device)
 
    if args.load_pretrained:
       model.load_state_dict(torch.load(args.pretrained_model))
@@ -292,9 +290,4 @@ def main(args):
 if __name__ == '__main__':
    parser = argparse.ArgumentParser()
    parser.add_argument("--data_dir", help="data directory", default='./data')
-   parser.add_argument("--default_settings", help="use default settings", type=bool, default=True)
-   parser.add_argument("--combine_train_val", help="combine the training and validation sets for testing", type=bool, default=False)
    main(parser.parse_args())
-
-
-     
