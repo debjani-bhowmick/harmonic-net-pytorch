@@ -18,9 +18,11 @@ class DeepMNIST(nn.Module):
     def __init__(self, args):
         super().__init__()
         '''
+        Initialization function
         Args:
-        args: argument variable to be used to initialize values for all the hyperparameters
+            args: argument variable to be used to initialize values for all the hyperparameters
         '''
+
         self.args = args
         self.order = 1
         # NUmber of filters
@@ -64,6 +66,8 @@ class DeepMNIST(nn.Module):
         Args:
             x (torch FloatTensor): contains of images for the current
             training step.
+
+        Returns output activations of the model
         '''
 
         x = x.view(self.bs, self.args.dim, self.args.dim, 1, 1, 1)
@@ -77,7 +81,7 @@ class DeepMNIST(nn.Module):
         cv2 = self.bn2(cv2)
 
         # defining block 2
-        cv2 = hn_lite.mean_pool(cv2, ksize=(2,2), strides=(2,2))
+        cv2 = hn_lite.mean_pool(cv2, kernel_size=(2,2), strides=(2,2))
         cv3 = self.conv2d_nf_nf2(cv2)
         cv3 = self.nonlin3(cv3)
 
@@ -86,7 +90,7 @@ class DeepMNIST(nn.Module):
         cv4 = self.bn4(cv4)  
 
         #defining block 3
-        cv4 = hn_lite.mean_pool(cv4, ksize=(2,2), strides=(2,2))
+        cv4 = hn_lite.mean_pool(cv4, kernel_size=(2,2), strides=(2,2))
         cv5 = self.conv2d_nf2_nf3(cv4)
         cv5 = self.nonlin5(cv5)
 
@@ -109,7 +113,7 @@ class RegularCNN(nn.Module):
         super().__init__()
         '''
         Args:
-        args: argument variable to be used to initialize values for all the hyperparameters
+            args: argument variable to be used to initialize values for all the hyperparameters
         '''
 
         self.args = args
