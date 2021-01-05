@@ -1,47 +1,59 @@
 """
-Core Harmonic Convolution Implementation
+This script includes implementations of rotation equivariant
+layers achieved through the use of Harmonic Networks. 
+
+Note: The implementations of harmonic networks are Pytorch versions
+adapted from the official Tensorflow implemetation available at 
+https://github.com/danielewworrall/harmonicConvolutions
 """
 
+# Importing the necessary dependencies
 import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
+from scipy.linalg import dft
+
 
 
 def h_conv(X, W, strides=(1,1,1,1), padding=0, max_order=1):
-    """Inter-order (cross-stream) convolutions can be implemented as single
-    convolution. For this we store data as 6D tensors and filters as 8D
-    tensors, at convolution, we reshape down to 4D tensors and expand again.
+    """
+    This functions performs harmonic convolution operation between the input X
+    and weights W. Harmonic convolutions between different orders, also referred
+    as cross-stream convolutions, can be converted into a single convolution. 
+    See Worrall et al, CVPR 2017 for details.
+    
+    Args:
+        X (pytorch tensor): Input image tensor of shape (bs,h,w,order,complex,channels)
+        W (dict of pytorch tensors): Contains tensors for m orders for filters as well
+        as the respective phases. 
+        strides (tuple of ints): tuple denoting strides for h and w directions. Similar
+        to the original tf code as well as the pytorch tuple standard format for stride,
+        we provide a 4-size tuple here. The dimensions N and c as per convention are 
+        also set to 1.(default (1,1,1,1))
+        padding: as per the Pytorch conv2d convention (default: 0)
+        max_order: max. order of roation to be modeled(default: 1)
 
-    X: tensor shape [mbatch,h,w,order,complex,channels]
-    Q: tensor dict---reshaped to [h,w,in,in.comp,in.ord,out,out.comp,out.ord]
-    P: tensor dict---phases
-    strides: as per tf convention (default (1,1,1,1))
-    padding: as per tf convention (default VALID)
-    filter_size: (default 3)
-    max_order: (default 1)
-    name: (default h_conv)
+    Returns:
+        Y: 
     """	
+
     Xsh = list(X.size())
-    X_ = X.view(Xsh[:3]+[-1]) #flatten out the last 3 dimensions
+    X_ = X.view(Xsh[:3]+[-1]) # flatten out the last 3 dimensions
 
-    # The script below constructs the stream-convolutions as one big filter
-    # W_. For each output order, run through each input order and
-    # copy-paste the filter for that convolution.
-
+    # To convert the stream convolutions into a stacked single filter, we
+    # combine the components of real and imaginary parts 
     W_ = []
-    for output_order in range(max_order+1):
+    for out_order in range(max_order+1):
         # For each output order build input
         Wr = []
         Wi = []
-        for input_order in range(Xsh[3]):
+        for inp_order in range(Xsh[3]):
             # Difference in orders is the convolution order
-            weight_order = output_order - input_order
+            weight_order = out_order - inp_order
             weights = W[np.abs(weight_order)]
             sign = np.sign(weight_order)
-            # Choose a different filter depending on whether input is real.
-            # We have the arbitrary convention that negative orders use the
-            # conjugate weights.
+
             if Xsh[4] == 2:
                 Wr += [weights[0],-sign*weights[1]]
                 Wi += [sign*weights[1],weights[0]]
@@ -52,7 +64,7 @@ def h_conv(X, W, strides=(1,1,1,1), padding=0, max_order=1):
         W_ += [torch.cat(Wr, 2), torch.cat(Wi, 2)]
     W_ = torch.cat(W_, 3)
 
-    # Convolve
+    # Convolving the constructed weights and feature map
     W_ = W_.permute(3, 2, 0, 1)
     W_ = W_.type(torch.cuda.FloatTensor) if torch.cuda.is_available() \
                                             else W_.type(torch.FloatTensor)
@@ -63,114 +75,189 @@ def h_conv(X, W, strides=(1,1,1,1), padding=0, max_order=1):
     # Reshae results into appropriate format
     Ysh = list(Y.size())
     new_shape = Ysh[:3] + [max_order+1,2] + [Ysh[3]//(2*(max_order+1))]
-    return Y.view(*new_shape)
+    Y = Y.view(*new_shape)
+    return Y
 
 
-def mean_pooling(x, ksize=(1,1), strides=(1,1)):
-    """Implement mean pooling on complex-valued feature maps. The complex mean
-    on a local receptive field, is performed as mean(real) + i*mean(imag)
+def avg_pool(X, kernel_size=(1,1), strides=(1,1)):
+    '''
+    Performs average pooling across the real as well as imaginary-valued feature maps.
 
-    x: tensor shape [mbatch,h,w,order,complex,channels]
-    ksize: kernel size 4-tuple (default (1,1,1,1))
-    strides: stride size 4-tuple (default (1,1,1,1))
-    """
-    Xsh = list(x.size())
+    Args:
+        X (torch tensor): Input image tensor of shape (bs,h,w,order,complex,channels)
+        kernel_size (int tuple): defines pooling kernel size
+        strides (tuple of ints): tuple denoting strides for h and w directions. Similar
+        to the original tf code as well as the pytorch tuple standard format for stride,
+        we provide a 4-size tuple here. The dimensions N and c as per convention are 
+        also set to 1.(default (1,1,1,1))
+    Returns:
+        Y (torch tensor): Output features after applying average pooling
+    '''
+
+    Xsh = list(X.size())
     # Collapse output the order, complex, and channel dimensions
-    X_ = x.view(*(Xsh[:3]+[-1]))
+    X_ = X.view(*(Xsh[:3]+[-1]))
     X_ = X_.permute(0, 3, 1, 2)
-    Y = F.avg_pool2d(X_, kernel_size=ksize, stride=strides, padding=0)
+    Y = F.avg_pool2d(X_, kernel_size=kernel_size, stride=strides, padding=0)
     Y = Y.permute(0, 2, 3, 1)
     Ysh = list(Y.size())
     new_shape = Ysh[:3] + Xsh[3:]
-    return Y.view(*new_shape)
+    Y = Y.view(*new_shape)
+    return Y
 
 
-def stack_magnitudes(X, eps=1e-12, keep_dims=True):
-    """Stack the magnitudes of each of the complex feature maps in X.
+def concat_feature_magnitudes(X, eps=1e-12, keep_dims=True):
+    '''
+    Concat the complex feature magnitudes in X.
 
-    Output U = concat(|X_i|)
+    Args:
+        X (dict): contains feature maps for the real and imaginary components 
+        for different rotation orders.
+        eps (float): regularization term for min clamping
 
-    X: dict of channels {rotation order: (real, imaginary)}
-    eps: regularization since grad |Z| is infinite at zero (default 1e-12)
-    """
+    Returns:
+        R (torch tensor): concatenated feature maps
+    '''
+
     R = torch.sum(torch.mul(X, X), dim=(4,), keepdim=keep_dims)
-    return torch.sqrt(torch.clamp(R,min=eps))
+    R = torch.sqrt(torch.clamp(R,min=eps))
+    return R
 
 	
+def get_interpolation_weights(fs, m, n_rings=None):
+    '''
+    Used to construct the steerable filters using Radial basis functions.
+    The filters are constructed on the patches of n_rings using Gaussian
+    interpolation. (Code adapted from the tf code of Worrall et al, CVPR, 2017)
 
-##### FUNCTIONS TO CONSTRUCT STEERABLE FILTERS #####
-def get_interpolation_weights(filter_size, m, n_rings=None):
-    """Resample the patches on rings using Gaussian interpolation"""
+    Args:
+        fs (int): filter size for the H-net convoutional layer
+        m (int): max. rotation order for the steerbable filters
+        n_rings (int): No. of rings for the steerbale filters
+
+    Returns:
+        norm_weights (numpy): contains normalized weights for interpolation
+        using the steerable filters
+    '''
+
     if n_rings is None:
-        n_rings = np.maximum(filter_size/2, 2)
-    radii = np.linspace(m!=0, n_rings-0.5, n_rings) #<-------------------------look into m and n-rings-0.5
+        n_rings = np.maximum(fs/2, 2)
+
+    # We define below radii up to n_rings-0.5 (as in Worrall et al, CVPR 2017)
+    radii = np.linspace(m!=0, n_rings-0.5, n_rings)
+
     # We define pixel centers to be at positions 0.5
-    foveal_center = np.asarray([filter_size, filter_size])/2.
-    # The angles to sample
-    N = n_samples(filter_size)
+    center_pt = np.asarray([fs, fs])/2.
+
+    # Extracting the set of angles to be sampled
+    N = get_sample_count(fs)
+
+    # Choosing the sampling locations for the rings
     lin = (2*np.pi*np.arange(N))/N
-    # Sample equi-angularly along each ring
     ring_locations = np.vstack([-np.sin(lin), np.cos(lin)])
+
     # Create interpolation coefficient coordinates
-    coords = L2_grid(foveal_center, filter_size)
-    # Sample positions wrt patch center IJ-coords
+    coords = get_l2_neighbors(center_pt, fs)
+
+    # getting samples based on the choisen center_pt and the coords
     radii = radii[:,np.newaxis,np.newaxis,np.newaxis]
     ring_locations = ring_locations[np.newaxis,:,:,np.newaxis]
     diff = radii*ring_locations - coords[np.newaxis,:,np.newaxis,:]
     dist2 = np.sum(diff**2, axis=1)
+
     # Convert distances to weightings
-    bandwidth = 0.5
-    weights = np.exp(-0.5*dist2/(bandwidth**2))
-    # Normalize
-    return weights/np.sum(weights, axis=2, keepdims=True)
+    weights = np.exp(-0.5*dist2/(0.5**2)) # For bandwidth of 0.5
+
+    # Normalizing the weights to calibrate the different steerable filters
+    norm_weights = weights/np.sum(weights, axis=2, keepdims=True)
+    return norm_weights
 
 
-def get_filters(R, filter_size, P=None, n_rings=None):
-    """Perform single-frequency DFT on each ring of a polar-resampled patch"""
+def get_filter_weights(R_dict, fs, P=None, n_rings=None):
+    '''
+    Calculates filters in the form of weight matrices through performing
+    single-frequency DFT on every ring obtained from sampling in the polar 
+    domain. 
+
+    Args:
+        R_dict (dict): contains initialization weights
+        fs (int): filter size for the h-net convolutional layer
+
+    Returns:
+        W (dict): contains the filter matrices
+    '''
        
-    k = filter_size
-    filters = {}
-    N = n_samples(k)
-    from scipy.linalg import dft
-    for m, r in R.items():
+    k = fs
+    W = {} # dict to store the filter matrices
+    N = get_sample_count(k)
+
+    for m, r in R_dict.items():
         rsh = list(r.size())
-        # Get the basis matrices
+
+        # Get the basis matrices built from the steerable filters
         weights = get_interpolation_weights(k, m, n_rings=n_rings)
         DFT = dft(N)[m,:]
-        LPF = np.dot(DFT, weights).T
+        low_pass_filter = np.dot(DFT, weights).T
 
-        cosine = np.real(LPF).astype(np.float32)
-        sine = np.imag(LPF).astype(np.float32)
-        # Reshape for multiplication with radial profile
-        cosine = torch.from_numpy(cosine)
-        cosine = cosine.to(device="cuda" if torch.cuda.is_available() else "cpu")
-        sine = torch.from_numpy(sine)
-        sine = sine.to(device="cuda" if torch.cuda.is_available() else "cpu")
-        # Project taps on to rotational basis
+        cos_comp = np.real(low_pass_filter).astype(np.float32)
+        sin_comp = np.imag(low_pass_filter).astype(np.float32)
+
+        # Arranging the two components in a manner that they can be directly
+        #  multiplied with the steerable weights
+        cos_comp = torch.from_numpy(cos_comp)
+        cos_comp = cos_comp.to(device="cuda" if torch.cuda.is_available() else "cpu")
+        sin_comp = torch.from_numpy(sin_comp)
+        sin_comp = sin_comp.to(device="cuda" if torch.cuda.is_available() else "cpu")
+
+        # Computng the projetions on the rotational basis
         r = r.view(rsh[0],rsh[1]*rsh[2])
-        ucos = torch.matmul(cosine, r).view(k, k, rsh[1], rsh[2]).double()
-        usin = torch.matmul(sine, r).view(k, k, rsh[1], rsh[2]).double()
+        ucos = torch.matmul(cos_comp, r).view(k, k, rsh[1], rsh[2]).double()
+        usin = torch.matmul(sin_comp, r).view(k, k, rsh[1], rsh[2]).double()
+
         if P is not None:
-            # Rotate basis matrices
+            # Rotating the basis matrices
             ucos_ = torch.cos(P[m])*ucos + torch.sin(P[m])*usin
             usin = -torch.sin(P[m])*ucos + torch.cos(P[m])*usin
             ucos = ucos_
-        filters[m] = (ucos, usin)
+        W[m] = (ucos, usin)
 
-    return filters
-
-
-def n_samples(filter_size):
-    return np.maximum(np.ceil(np.pi*filter_size),101) ############## <--- One source of instability
+    return W
 
 
-def L2_grid(center, shape):
-    # Get neighbourhoods
+def get_sample_count(fs): 
+    '''
+    Calculates the number of points to be samples.
+
+    Args:
+        fs: filter size
+
+    Returns: 
+        n_samples: numeber of points to be sampled on the grid
+    '''
+
+    n_samples = np.maximum(np.ceil(np.pi*fs),101)
+    return n_samples
+
+
+def get_l2_neighbors(center, shape):
+    '''
+    Creates a grid of indices for the neighbors
+
+    Args:
+        center (int, int): denotes indeices for the center point 
+        shape (int): number of points along each dimesion
+
+    Returns:
+        l2_grid (numpy): contains indices of the neighbors in grid
+    '''
+
+    # Get the neighborhood indices
     lin = np.arange(shape)+0.5
-    J, I = np.meshgrid(lin, lin)
-    I = I - center[1]
-    J = J - center[0]
-    return np.vstack((np.reshape(I, -1), np.reshape(J, -1)))
+    jj, ii = np.meshgrid(lin, lin)
+    ii = ii - center[1]
+    jj = jj - center[0]
+    l2_grid = np.vstack((np.reshape(ii, -1), np.reshape(jj, -1)))
+    return l2_grid
 
 
 
