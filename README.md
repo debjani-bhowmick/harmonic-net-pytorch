@@ -6,9 +6,9 @@
 2. [Installation](#installation)
 3. [Project Motivation](#motivation)
 4. [File Descriptions](#files)
-5. [Running Experiments](#experiments)
-6. [Results](#results)
-7. [Data Description](#data)
+5. [Data Description](#data)
+6. [Running Experiments](#experiments)
+7. [Results](#results)
 8. [References](#references)
 
 ### Summary <a name="summary"></a>
@@ -52,6 +52,8 @@ The project structure as well as the desciption of the contained files is as fol
 The Rot-MNIST dataset can be downloaded from the dropbox [link](https://www.dropbox.com/s/0fxwai3h84dczh0/mnist_rotation_new.zip) made publicly available in the official tensorflow code provided by [1]. Note that in our implementation, script `main.py` automatically downloads the data if not present in the `data` folder, thus explicitly downloading it is not needed. However, in case data analysis is performed with the notebook provided, user needs to first download, unzip and put the data in the `data` folder.
 
 Rot-MNIST contains a total of 62000 images of MNIST digits, each rotated by an arbitrary angle. The full dataset is split into 10000, 2000 and 50000 samples for the training, validation and test sets, respectively. The test and validation sets are chosen such that there are significant slightly out-of-distribution samples in them compared to the training set. Each image is also accompanied by a label from 0-9. Our statistical analysis, also reported in `visualization_rot-mnist.ipynb`, reveals that the data is balanced across the 10 classes with 9-11% of the samples belonging to each of the classes in the training, validation as well as the test sets. For some visuals of the dataset, we recommend the reader to see the `visualization_rot-mnist.ipynb` notebook or visit the blog post [here](https://debjani-ism.medium.com/classification-of-rotational-mnist-digits-using-harmonic-networks-aaabc1406189).
+
+<b>Important note</b>: As reported in `visualization_rot-mnist.ipynb` notebook, the classes are balanced. Due to this we do not use any class balancing technique and choose the traditional cross-entropy loss for the classification loss. Further, as evaluation metric, we only use accuracy term to evaluate our model. Due to class balance, metrics such as balanced accuracy are not needed.
 
 ## Experiments <a name="experiments"></a>
 
