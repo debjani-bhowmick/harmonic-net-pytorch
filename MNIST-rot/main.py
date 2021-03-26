@@ -203,8 +203,8 @@ def main(args):
       model.load_state_dict(torch.load(args.pretrained_model))
 
    # print model parameters count
-   pytorch_total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-   print('Total trainable params : ', pytorch_total_params)
+   pytorch_n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+   print('Total trainable params : ', pytorch_n_params)
 
    # Optimizer
    optimizer = torch.optim.Adam(model.parameters(), lr=lr)

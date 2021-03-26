@@ -56,21 +56,6 @@ def add_folder(folder_name):
       print('Created {:s}'.format(folder_name))
    return folder_name
 
-
-def get_learning_rate(args, current, best, counter, learning_rate):
-   """If have not seen accuracy improvement in delay epochs, then divide 
-   learning rate by 10
-   """
-   if current > best:
-      best = current
-      counter = 0
-   elif counter > args.delay:
-      learning_rate = learning_rate / args.lr_div
-      counter = 0
-   else:
-      counter += 1
-   return (best, counter, learning_rate)
-
 def save_featmaps(featmaps, save_path, save_idx):
 
    for itr in range(featmaps.shape[0]):
